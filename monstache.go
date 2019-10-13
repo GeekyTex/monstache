@@ -998,7 +998,9 @@ func processRelated(session *mgo.Session, bulk *elastic.BulkProcessor, elastic *
 				query := col.Find(sel)
 				iter := query.Iter()
 				doc := map[string]interface{}{}
+				relatedFound := false
 				for iter.Next(doc) {
+					relatedFound = true
 					now := time.Now().UTC()
 					tstamp := bson.MongoTimestamp(now.Unix() << 32)
 					offset := bson.MongoTimestamp(now.Nanosecond())
@@ -1060,6 +1062,21 @@ func processRelated(session *mgo.Session, bulk *elastic.BulkProcessor, elastic *
 					}
 				}
 				iter.Close()
+				if !relatedFound {
+					if op.IsUpdate() && r.IsIdentity() {
+						rop := &gtm.Op{
+							Id:        op.Id,
+							Operation: op.Operation,
+							Namespace: r.WithNamespace,
+							Source:    op.Source,
+							Timestamp: op.Timestamp,
+							Data:      op.Data,
+						}
+						doDelete(config, elastic, session, bulk, rop)
+						q = append(q, rop)
+						continue
+					}
+				}
 			}
 		}
 		depth++
